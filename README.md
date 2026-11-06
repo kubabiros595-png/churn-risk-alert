@@ -105,6 +105,7 @@ The account data is read from a data table that acts as a contract between the d
 - `workflow-diagram.png`: workflow overview
 - `workflow.png`: n8n workflow screenshot
 - `eval-workflow.png`: evaluation workflow screenshot
+- `review-form.png`: review form with one pending alert
 
 ## How to import
 
@@ -125,3 +126,5 @@ The account data is read from a data table that acts as a contract between the d
 ![n8n workflow: scoring, deduplication, AI draft and save](workflow.png)
 
 ![Evaluation workflow: test accounts run through the same scoring and dedup code](eval-workflow.png)
+
+![Review form: reasons, internal note, draft and decision for one alert](review-form.png)
