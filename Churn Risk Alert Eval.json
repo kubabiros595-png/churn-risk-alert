@@ -1,0 +1,255 @@
+{
+  "name": "Churn Risk Alert Eval",
+  "nodes": [
+    {
+      "id": "0961fa11-47c2-48d2-860c-bdac4d39413d",
+      "name": "When clicking 'Execute workflow'",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "5fde7c14-765a-4ea2-8a60-d2c43353404f",
+      "name": "Get eval cases",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "uNS4iouBEC1eCU7V",
+          "cachedResultName": "Churn Eval Cases"
+        },
+        "returnAll": true
+      }
+    },
+    {
+      "id": "0296a2c5-dba0-4bcf-a45e-cf2189f38369",
+      "name": "Build test accounts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const today = $now.setZone('Europe/Warsaw').startOf('day');\n\n// Dates are built fresh on each run, so the test does not go stale.\nreturn $input.all().map((item) => {\n  const testCase = item.json;\n  const hasPriorAlert = Boolean(testCase.prior_status);\n\n  return {\n    json: {\n      account_id: testCase.case_id,\n      account_name: 'Eval account ' + testCase.case_id,\n      active_users_pct: testCase.active_users_pct,\n      usage_change_30d_pct: testCase.usage_change_30d_pct,\n      open_tickets: testCase.open_tickets,\n      days_since_last_contact: testCase.days_since_last_contact,\n      renewal_date: today.plus({ days: testCase.renewal_in_days }).toFormat('yyyy-MM-dd'),\n      eval_run: true,\n      eval_prior_alerts: hasPriorAlert\n        ? [{\n            account_id: testCase.case_id,\n            alert_date: today.minus({ days: testCase.prior_days_ago }).toFormat('yyyy-MM-dd'),\n            review_status: testCase.prior_status,\n            score: testCase.prior_score,\n            internal_note: testCase.prior_draft_failed ? 'NO DRAFT: AI result is not valid JSON.' : 'Draft ready.',\n          }]\n        : [],\n    },\n  };\n});"
+      }
+    },
+    {
+      "id": "9cf534d4-2301-4eb4-ac57-71919a682923",
+      "name": "Run scoring and dedup",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.4,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "",
+          "cachedResultName": "Churn Risk Alert"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      }
+    },
+    {
+      "id": "9639d179-7d50-4487-8d64-040a9f3e8f6e",
+      "name": "Compare with expected",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const cases = $('Get eval cases').all().map((item) => item.json);\nconst results = new Map($input.all().map((item) => [item.json.account_id, item.json]));\n\nconst mistakes = [];\nlet alertCorrect = 0;\nlet scoreCorrect = 0;\nlet falseAlerts = 0;\nlet missedAlerts = 0;\n\nfor (const testCase of cases) {\n  const result = results.get(testCase.case_id);\n  const gotAlert = result ? result.create_alert : null;\n  const gotScore = result ? result.risk_score : null;\n\n  if (gotAlert === testCase.expected_alert) {\n    alertCorrect += 1;\n  } else {\n    if (gotAlert === true) falseAlerts += 1;\n    if (gotAlert === false) missedAlerts += 1;\n    mistakes.push(testCase.case_id + ' alert: ' + gotAlert + ' instead of ' + testCase.expected_alert);\n  }\n\n  if (gotScore === testCase.expected_score) {\n    scoreCorrect += 1;\n  } else {\n    mistakes.push(testCase.case_id + ' score: ' + gotScore + ' instead of ' + testCase.expected_score);\n  }\n}\n\nreturn [{\n  json: {\n    cases: cases.length,\n    alert_correct: alertCorrect,\n    hit_rate_pct: Math.round((alertCorrect / cases.length) * 1000) / 10,\n    score_correct: scoreCorrect,\n    false_alerts: falseAlerts,\n    missed_alerts: missedAlerts,\n    mistakes: mistakes.join(' | ') || 'none',\n  },\n}];"
+      }
+    },
+    {
+      "id": "9f9249b1-390d-42a0-bcd5-8d0fa5ac602e",
+      "name": "Save eval run",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1200,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "dcc5KXc2ef6G42G9",
+          "cachedResultName": "Churn Eval Runs"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "run_at": "={{ $now.setZone('Europe/Warsaw').toFormat('yyyy-MM-dd HH:mm') }}",
+            "cases": "={{ $json.cases }}",
+            "alert_correct": "={{ $json.alert_correct }}",
+            "hit_rate_pct": "={{ $json.hit_rate_pct }}",
+            "score_correct": "={{ $json.score_correct }}",
+            "false_alerts": "={{ $json.false_alerts }}",
+            "missed_alerts": "={{ $json.missed_alerts }}",
+            "mistakes": "={{ $json.mistakes }}"
+          },
+          "schema": [
+            {
+              "id": "run_at",
+              "displayName": "run_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "cases",
+              "displayName": "cases",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "alert_correct",
+              "displayName": "alert_correct",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "hit_rate_pct",
+              "displayName": "hit_rate_pct",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "score_correct",
+              "displayName": "score_correct",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "false_alerts",
+              "displayName": "false_alerts",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "missed_alerts",
+              "displayName": "missed_alerts",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "mistakes",
+              "displayName": "mistakes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "connections": {
+    "When clicking 'Execute workflow'": {
+      "main": [
+        [
+          {
+            "node": "Get eval cases",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get eval cases": {
+      "main": [
+        [
+          {
+            "node": "Build test accounts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build test accounts": {
+      "main": [
+        [
+          {
+            "node": "Run scoring and dedup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run scoring and dedup": {
+      "main": [
+        [
+          {
+            "node": "Compare with expected",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compare with expected": {
+      "main": [
+        [
+          {
+            "node": "Save eval run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "tags": []
+}

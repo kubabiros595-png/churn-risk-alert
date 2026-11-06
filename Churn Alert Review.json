@@ -1,0 +1,413 @@
+{
+  "name": "Churn Alert Review",
+  "nodes": [
+    {
+      "id": "8ba89d65-3ce9-480b-8a9d-ff5a57e43944",
+      "name": "Open alert review",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "authentication": "n8nUserAuth",
+        "formTitle": "Churn alert review",
+        "formDescription": "Portfolio project on fictional data. Nothing is sent to customers.",
+        "formFields": {
+          "values": [
+            {
+              "fieldType": "html",
+              "elementName": "intro",
+              "html": "<p>Open the alerts waiting for review.</p>"
+            }
+          ]
+        },
+        "responseMode": "onReceived",
+        "options": {
+          "buttonLabel": "Show pending alerts",
+          "appendAttribution": false
+        }
+      }
+    },
+    {
+      "id": "1155a9fb-8bc4-400a-afcf-0d6cd3687c78",
+      "name": "Get pending alerts",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        0
+      ],
+      "alwaysOutputData": true,
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "qszEq9TjQx4UjEKr",
+          "cachedResultName": "Churn Alerts"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "review_status",
+              "condition": "eq",
+              "keyValue": "pending review"
+            }
+          ]
+        },
+        "returnAll": true,
+        "orderBy": true,
+        "orderByColumn": "score",
+        "orderByDirection": "DESC"
+      }
+    },
+    {
+      "id": "d1a0a026-6f60-44a5-8d15-92429e22a111",
+      "name": "Get account names",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "eS05pjp5uaxL0HQB",
+          "cachedResultName": "Demo Accounts"
+        },
+        "returnAll": true
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "db88ba48-cc95-43e5-b2e8-e3dfc58da2a6",
+      "name": "Build review page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const alerts = $('Get pending alerts').all().map((item) => item.json).filter((row) => row.id);\nconst names = new Map($input.all().map((item) => [item.json.account_id, item.json.account_name]));\n\nif (!alerts.length) return [{ json: { has_pending: false, pending_count: 0 } }];\n\n// Text from the table or the AI is shown as plain text, never as HTML.\nconst escapeHtml = (value) => String(value ?? '')\n  .replace(/&/g, '&amp;')\n  .replace(/</g, '&lt;')\n  .replace(/>/g, '&gt;')\n  .replace(/\"/g, '&quot;')\n  .replace(/\\n/g, '<br>');\n\nconst formFields = alerts.flatMap((alert) => {\n  const name = names.get(alert.account_id) || alert.account_id;\n  const card = [\n    '<hr>',\n    '<h3>' + escapeHtml(name) + ' (' + escapeHtml(alert.account_id) + ') - score ' + escapeHtml(alert.score) + '</h3>',\n    '<p><b>Alert date:</b> ' + escapeHtml(alert.alert_date) + '</p>',\n    '<p><b>Why:</b> ' + escapeHtml(alert.reasons) + '</p>',\n    '<p><b>Internal note:</b> ' + escapeHtml(alert.internal_note) + '</p>',\n    '<p><b>Subject:</b> ' + escapeHtml(alert.draft_subject) + '</p>',\n    '<p><b>Draft email:</b><br>' + escapeHtml(alert.draft_body) + '</p>',\n  ].join('');\n\n  return [\n    { fieldType: 'html', elementName: 'card_' + alert.id, html: card },\n    {\n      fieldLabel: 'Decision for alert ' + alert.id,\n      fieldName: 'decision_' + alert.id,\n      fieldType: 'dropdown',\n      fieldOptions: { values: [{ option: 'keep pending' }, { option: 'approved' }, { option: 'rejected' }, { option: 'edit' }] },\n      defaultValue: 'keep pending',\n      requiredField: true,\n    },\n    {\n      fieldLabel: 'Note for alert ' + alert.id,\n      fieldName: 'note_' + alert.id,\n      fieldType: 'textarea',\n      placeholder: 'What should change, or why you rejected it',\n      requiredField: false,\n    },\n  ];\n});\n\nreturn [{\n  json: {\n    has_pending: true,\n    pending_count: alerts.length,\n    alert_ids: alerts.map((alert) => alert.id),\n    form_fields: formFields,\n  },\n}];"
+      }
+    },
+    {
+      "id": "e9ac5b07-617c-4a28-a21f-a003e0ebb3be",
+      "name": "Anything pending?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        960,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.has_pending }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "93e89083-74b9-40e2-8fbf-0d1d21dcd6d7",
+      "name": "Review pending alerts",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        1200,
+        -96
+      ],
+      "parameters": {
+        "operation": "page",
+        "defineForm": "json",
+        "jsonOutput": "={{ $json.form_fields }}",
+        "options": {
+          "formTitle": "Pending alerts",
+          "formDescription": "Approved only means ready to copy. Nothing is sent to customers.",
+          "buttonLabel": "Save decisions",
+          "appendAttribution": false
+        }
+      }
+    },
+    {
+      "id": "8b94e5db-af92-4705-b220-f24ae9a04444",
+      "name": "Nothing to review",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        1200,
+        96
+      ],
+      "parameters": {
+        "operation": "completion",
+        "respondWith": "text",
+        "completionTitle": "Nothing to review",
+        "completionMessage": "There are no pending alerts right now."
+      }
+    },
+    {
+      "id": "13b4010c-32b1-404f-bf5e-03cdfb15b161",
+      "name": "Prepare decisions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        -96
+      ],
+      "parameters": {
+        "jsCode": "const answers = $input.first().json;\nconst alertIds = $('Build review page').first().json.alert_ids;\n\nreturn alertIds.map((id) => {\n  const choice = answers['decision_' + id] ?? answers['Decision for alert ' + id] ?? 'keep pending';\n  const note = answers['note_' + id] ?? answers['Note for alert ' + id] ?? '';\n\n  return {\n    json: {\n      row_id: id,\n      review_status: choice === 'keep pending' ? 'pending review' : choice,\n      reviewer_note: String(note).trim(),\n    },\n  };\n});"
+      }
+    },
+    {
+      "id": "a5ea839a-f5a3-4200-b96d-4df1fcdfe8b4",
+      "name": "Save decision",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1680,
+        -96
+      ],
+      "alwaysOutputData": true,
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "qszEq9TjQx4UjEKr",
+          "cachedResultName": "Churn Alerts"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.row_id }}"
+            },
+            {
+              "keyName": "review_status",
+              "condition": "eq",
+              "keyValue": "pending review"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "review_status": "={{ $json.review_status }}",
+            "reviewer_note": "={{ $json.reviewer_note }}"
+          },
+          "schema": [
+            {
+              "id": "review_status",
+              "displayName": "review_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "reviewer_note",
+              "displayName": "reviewer_note",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "996b346b-5f2f-47e1-b080-e4a462be43bb",
+      "name": "Summarize decisions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        -96
+      ],
+      "parameters": {
+        "jsCode": "const decisions = $('Prepare decisions').all().map((item) => item.json);\nconst count = (status) => decisions.filter((row) => row.review_status === status).length;\n\nreturn [{\n  json: {\n    summary: 'Approved: ' + count('approved') +\n      ', rejected: ' + count('rejected') +\n      ', edit: ' + count('edit') +\n      ', still pending: ' + count('pending review') +\n      '. Nothing was sent. Approved means ready to copy.',\n  },\n}];"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "9e4ffac9-9e7b-4e0b-88af-7c63cd1c3b3c",
+      "name": "Decisions saved",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        2160,
+        -96
+      ],
+      "parameters": {
+        "operation": "completion",
+        "respondWith": "text",
+        "completionTitle": "Decisions saved",
+        "completionMessage": "={{ $json.summary }}"
+      }
+    }
+  ],
+  "connections": {
+    "Open alert review": {
+      "main": [
+        [
+          {
+            "node": "Get pending alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get pending alerts": {
+      "main": [
+        [
+          {
+            "node": "Get account names",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get account names": {
+      "main": [
+        [
+          {
+            "node": "Build review page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build review page": {
+      "main": [
+        [
+          {
+            "node": "Anything pending?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anything pending?": {
+      "main": [
+        [
+          {
+            "node": "Review pending alerts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Nothing to review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Review pending alerts": {
+      "main": [
+        [
+          {
+            "node": "Prepare decisions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare decisions": {
+      "main": [
+        [
+          {
+            "node": "Save decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save decision": {
+      "main": [
+        [
+          {
+            "node": "Summarize decisions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarize decisions": {
+      "main": [
+        [
+          {
+            "node": "Decisions saved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "nodeGroups": [
+    {
+      "name": "Load pending alerts",
+      "nodeNames": [
+        "Get pending alerts",
+        "Get account names",
+        "Build review page"
+      ],
+      "description": "Reads alerts waiting for review and builds one card with a decision field for each."
+    },
+    {
+      "name": "Save decisions",
+      "nodeNames": [
+        "Prepare decisions",
+        "Save decision",
+        "Summarize decisions"
+      ],
+      "description": "Writes each decision and note to Churn Alerts. Nothing is sent."
+    }
+  ],
+  "tags": []
+}
