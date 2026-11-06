@@ -103,6 +103,7 @@ The account data is read from a data table that acts as a contract between the d
 - `test-results.md`: test method and results
 - `data-and-privacy.md`: data contract, integration options and data protection notes
 - `workflow-diagram.png`: workflow overview
+- `workflow.png`: n8n workflow screenshot
 
 ## How to import
 
@@ -117,3 +118,7 @@ The account data is read from a data table that acts as a contract between the d
 - Add an error workflow that alerts a person when a run fails.
 - Delete alerts older than 90 days automatically.
 - Test the email drafts with a larger set of fictional accounts.
+
+## Screenshots
+
+![n8n workflow: scoring, deduplication, AI draft and save](workflow.png)
